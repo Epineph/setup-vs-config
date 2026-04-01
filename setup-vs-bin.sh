@@ -241,7 +241,7 @@ function install_radian() {
   fi
 
   info "Installing radian with pipx"
-  pipx install radian
+  pipx install radian --force
 }
 
 function choose_r_term() {
