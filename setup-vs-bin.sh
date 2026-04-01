@@ -3,39 +3,36 @@
 set -euo pipefail
 
 #===============================================================================
-# setup-vs-bin.sh
+# setup-vs-bin-corrected.sh
 #
-# Configure Visual Studio Code on Arch Linux for a shell/Python/R/PowerShell-
-# centric workflow, while also preparing sane support for Node.js, Lua,
-# Markdown, LaTeX, YAML, Docker, C/C++, Rust, and Java.
+# Configure Visual Studio Code on Arch Linux for a shell / Python / R /
+# PowerShell-centric workflow, while also preparing support for Node.js,
+# JavaScript, TypeScript, Lua, Markdown, YAML, Docker, C/C++, Rust, Java,
+# and LaTeX.
 #
 # This script:
 #   1. Detects or installs VS Code (`code`) on Arch Linux.
 #   2. Optionally backs up existing user settings.
-#   3. Installs a curated set of extensions with verified marketplace IDs.
-#   4. Writes a clean settings.json and keybindings.json.
-#   5. Optionally installs recommended companion packages for Linux-side tools.
+#   3. Installs a curated set of extensions.
+#   4. Writes settings.json and keybindings.json.
+#   5. Optionally installs recommended companion packages.
+#   6. Optionally installs radian with pipx.
 #
 # Notes:
-#   - The old setting `terminal.integrated.shell.linux` is obsolete; modern
-#     VS Code uses terminal profiles and `terminal.integrated.defaultProfile`.
-#   - `editor.codeActionsOnSave` now prefers enum values such as `explicit`
-#     and `always` instead of legacy booleans.
-#   - R support in VS Code is substantially better when the R packages
-#     `languageserver`, `jsonlite`, and `rlang` are installed; `httpgd` is
-#     recommended for the plot viewer, and `radian` is optional.
+#   - Modern VS Code uses terminal profiles and defaultProfile settings.
+#   - `editor.codeActionsOnSave` should use enum values such as `explicit`.
+#   - On Arch Linux, radian should be installed with pipx rather than
+#     `pip --user`.
+#   - The Arch package `bash-language-server` depends on `nodejs`, which can
+#     conflict with installed `nodejs-lts-*` packages. This script avoids
+#     replacing an LTS runtime merely to satisfy that package.
 #
 # Usage:
-#   ./setup-vs-bin.sh
-#   ./setup-vs-bin.sh --backup
-#   ./setup-vs-bin.sh --backup --install-packages
-#
-# Examples:
-#   ./setup-vs-bin.sh
-#   ./setup-vs-bin.sh --backup
-#   ./setup-vs-bin.sh --install-packages
-#   ./setup-vs-bin.sh --backup --install-packages --radian
-#   ./setup-vs-bin.sh --skip-packages --code-bin "$(command -v code)"
+#   ./setup-vs-bin-corrected.sh
+#   ./setup-vs-bin-corrected.sh --backup
+#   ./setup-vs-bin-corrected.sh --install-packages
+#   ./setup-vs-bin-corrected.sh --install-packages --radian
+#   ./setup-vs-bin-corrected.sh --backup --install-packages --radian
 #
 #===============================================================================
 
@@ -44,8 +41,8 @@ set -euo pipefail
 #-------------------------------------------------------------------------------
 BACKUP=false
 INSTALL_PACKAGES=false
-INSTALL_RADIAN=false
 SKIP_PACKAGES=false
+INSTALL_RADIAN=false
 CODE_BIN=""
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 
@@ -58,46 +55,48 @@ KEYBINDINGS_FILE="${VSCODE_USER_DIR}/keybindings.json"
 # Help
 #-------------------------------------------------------------------------------
 function show_help() {
-  cat <<'EOF'
-setup-vs-bin.sh
+  cat <<'EOF_HELP'
+setup-vs-bin-corrected.sh
 
-Configure Visual Studio Code on Arch Linux for a scientific and scripting-heavy
-workflow.
+Configure Visual Studio Code on Arch Linux for a scientific and scripting-
+heavy workflow.
 
 Usage:
-  setup-vs-bin.sh [options]
+  setup-vs-bin-corrected.sh [options]
 
 Options:
   --backup            Back up existing settings.json and keybindings.json.
-  --install-packages  Install recommended Arch/Python helper packages.
+  --install-packages  Install recommended Arch helper packages.
   --skip-packages     Do not install helper packages.
-  --radian            Install radian with pip if pip is available.
+  --radian            Install or upgrade radian via pipx.
   --code-bin PATH     Use a specific `code` executable.
   -h, --help          Show this help text.
 
-What gets installed/configured:
+What gets configured:
   - VS Code extensions for Bash, Python, Jupyter, R, PowerShell, Lua,
     Markdown, YAML, Docker, Git, C/C++, CMake, Rust, Java, and LaTeX.
-  - Language-specific formatter/linter defaults.
-  - Linux terminal profile defaults for bash/zsh/fish.
-  - Keybindings aimed at practical editing rather than novelty.
+  - Language-specific formatter defaults where they are low-risk.
+  - Linux terminal profile defaults for zsh, bash, and fish.
+  - Practical keybindings rather than novelty bindings.
 
 Important package notes:
-  - Bash tooling is materially better with: bash-language-server, shellcheck,
-    shfmt.
-  - Python tooling is materially better with: python-black, python-ruff.
-  - R tooling is materially better with CRAN packages:
+  - Bash tooling is materially better with bash-language-server, shellcheck,
+    and shfmt.
+  - Python tooling is materially better with python-black and python-ruff.
+  - R tooling is materially better with R packages such as:
       languageserver, jsonlite, rlang, httpgd
-    and optionally radian from PyPI.
-  - Java language support needs a JDK. Java 21 is a safe target.
+  - radian is optional and is installed via pipx, not `pip --user`.
+  - If an LTS Node.js runtime is already installed, this script does not
+    replace it merely to satisfy a helper package.
 
 Examples:
-  setup-vs-bin.sh
-  setup-vs-bin.sh --backup
-  setup-vs-bin.sh --install-packages
-  setup-vs-bin.sh --backup --install-packages --radian
-  setup-vs-bin.sh --skip-packages --code-bin /usr/bin/code
-EOF
+  setup-vs-bin-corrected.sh
+  setup-vs-bin-corrected.sh --backup
+  setup-vs-bin-corrected.sh --install-packages
+  setup-vs-bin-corrected.sh --install-packages --radian
+  setup-vs-bin-corrected.sh --backup --install-packages --radian
+  setup-vs-bin-corrected.sh --code-bin /usr/bin/code
+EOF_HELP
 }
 
 #-------------------------------------------------------------------------------
@@ -156,7 +155,7 @@ function parse_args() {
 }
 
 #-------------------------------------------------------------------------------
-# Dependency / platform checks
+# Platform and binary checks
 #-------------------------------------------------------------------------------
 function require_arch() {
   [[ -f /etc/arch-release ]] || \
@@ -184,6 +183,82 @@ function detect_code_bin() {
 }
 
 #-------------------------------------------------------------------------------
+# Node and radian helpers
+#-------------------------------------------------------------------------------
+function have_node_runtime() {
+  command -v node >/dev/null 2>&1
+}
+
+function have_node_lts_package() {
+  pacman -Qq 2>/dev/null | grep -Eq '^nodejs-lts-'
+}
+
+function should_skip_bash_language_server_pkg() {
+  if pacman -Q bash-language-server >/dev/null 2>&1; then
+    return 1
+  fi
+
+  if have_node_lts_package && ! pacman -Q nodejs >/dev/null 2>&1; then
+    return 0
+  fi
+
+  return 1
+}
+
+function ensure_node_runtime() {
+  if have_node_runtime; then
+    info "Existing Node.js runtime detected: $(node --version)"
+    info "Leaving current Node.js installation unchanged"
+    return 0
+  fi
+
+  info "No Node.js runtime detected; installing nodejs and npm"
+  sudo pacman -S --needed nodejs npm
+}
+
+function ensure_pipx() {
+  if command -v pipx >/dev/null 2>&1; then
+    return 0
+  fi
+
+  info "Installing python-pipx via pacman"
+  sudo pacman -S --needed python-pipx
+
+  command -v pipx >/dev/null 2>&1 || \
+    die "pipx is not available after installation attempt"
+}
+
+function install_radian() {
+  ensure_pipx
+
+  info "Ensuring pipx path"
+  pipx ensurepath >/dev/null 2>&1 || true
+
+  if pipx list --short 2>/dev/null | grep -Fxq 'radian'; then
+    info "radian already installed; upgrading with pipx"
+    pipx upgrade radian || true
+    return 0
+  fi
+
+  info "Installing radian with pipx"
+  pipx install radian
+}
+
+function choose_r_term() {
+  if command -v radian >/dev/null 2>&1; then
+    command -v radian
+    return 0
+  fi
+
+  if [[ -x "${HOME}/.local/bin/radian" ]]; then
+    printf '%s\n' "${HOME}/.local/bin/radian"
+    return 0
+  fi
+
+  printf '%s\n' "R"
+}
+
+#-------------------------------------------------------------------------------
 # Backups
 #-------------------------------------------------------------------------------
 function backup_existing_files() {
@@ -191,6 +266,7 @@ function backup_existing_files() {
 
   mkdir -p "$VSCODE_USER_DIR"
 
+  local file
   for file in "$SETTINGS_FILE" "$KEYBINDINGS_FILE"; do
     if [[ -f "$file" ]]; then
       cp -a "$file" "${file}.bak-${TIMESTAMP}"
@@ -207,15 +283,12 @@ function install_arch_packages() {
   [[ "$INSTALL_PACKAGES" == true ]] || return 0
 
   local -a pkgs=(
-    bash-language-server
     shellcheck
     shfmt
     python-black
     python-ruff
     lua-language-server
     rust-analyzer
-    nodejs
-    npm
     jdk21-openjdk
     cmake
     make
@@ -225,17 +298,17 @@ function install_arch_packages() {
     unzip
   )
 
+  if should_skip_bash_language_server_pkg; then
+    warn "Skipping bash-language-server package to avoid replacing an"
+    warn "installed nodejs-lts package with nodejs"
+  else
+    pkgs+=(bash-language-server)
+  fi
+
   info "Installing recommended Arch packages"
   sudo pacman -S --needed "${pkgs[@]}"
 
-  if [[ "$INSTALL_RADIAN" == true ]]; then
-    if command -v pip >/dev/null 2>&1; then
-      info "Installing/updating radian with pip --user"
-      python -m pip install --user --upgrade radian
-    else
-      warn "pip not found; skipping radian installation"
-    fi
-  fi
+  ensure_node_runtime
 }
 
 #-------------------------------------------------------------------------------
@@ -290,7 +363,10 @@ function install_extensions() {
 function write_settings() {
   mkdir -p "$VSCODE_USER_DIR"
 
-  cat > "$SETTINGS_FILE" <<'EOF'
+  local r_term
+  r_term="$(choose_r_term)"
+
+  cat > "$SETTINGS_FILE" <<EOF_SETTINGS
 {
   "workbench.colorTheme": "Default Dark Modern",
   "workbench.iconTheme": "material-icon-theme",
@@ -311,9 +387,6 @@ function write_settings() {
   "editor.guides.indentation": true,
   "editor.guides.bracketPairs": true,
   "editor.bracketPairColorization.enabled": true,
-  "editor.smoothScrolling": true,
-  "editor.cursorBlinking": "smooth",
-  "editor.cursorSmoothCaretAnimation": "on",
   "editor.inlineSuggest.enabled": true,
   "editor.stickyScroll.enabled": true,
   "editor.formatOnSave": true,
@@ -328,7 +401,7 @@ function write_settings() {
   "files.trimTrailingWhitespace": true,
   "files.trimFinalNewlines": true,
   "files.encoding": "utf8",
-  "files.eol": "\n",
+  "files.eol": "\\n",
   "files.associations": {
     "*.Rprofile": "r",
     "*.Renviron": "shellscript",
@@ -388,7 +461,7 @@ function write_settings() {
   "[shellscript]": {
     "editor.defaultFormatter": "mkhl.shfmt",
     "editor.tabSize": 2,
-    "files.eol": "\n"
+    "files.eol": "\\n"
   },
   "bashIde.enableSourceErrorDiagnostics": true,
   "shellcheck.enable": true,
@@ -410,7 +483,6 @@ function write_settings() {
   "python.REPL.sendToNativeREPL": false,
   "black-formatter.importStrategy": "fromEnvironment",
   "ruff.importStrategy": "fromEnvironment",
-  "ruff.nativeServer": "on",
   "ruff.organizeImports": true,
 
   "jupyter.askForKernelRestart": false,
@@ -422,7 +494,7 @@ function write_settings() {
   "r.alwaysUseActiveTerminal": true,
   "r.plot.useHttpgd": true,
   "r.sessionWatcher": true,
-  "r.rterm.linux": "radian",
+  "r.rterm.linux": "${r_term}",
   "r.rterm.option": [
     "--no-save",
     "--no-restore"
@@ -439,7 +511,6 @@ function write_settings() {
 
   "powershell.codeFormatting.useCorrectCasing": true,
   "powershell.codeFormatting.openBraceOnSameLine": true,
-  "powershell.codeFormatting.preset": "OTBS",
   "[powershell]": {
     "editor.tabSize": 2,
     "editor.insertSpaces": true
@@ -489,13 +560,11 @@ function write_settings() {
     }
   },
 
-  "eslint.format.enable": true,
   "prettier.useEditorConfig": true,
 
   "[rust]": {
     "editor.formatOnSave": true
   },
-  "rust-analyzer.checkOnSave": true,
   "rust-analyzer.cargo.autoreload": true,
 
   "cmake.configureOnOpen": false,
@@ -511,7 +580,7 @@ function write_settings() {
     "MD033": false
   }
 }
-EOF
+EOF_SETTINGS
 }
 
 #-------------------------------------------------------------------------------
@@ -520,7 +589,7 @@ EOF
 function write_keybindings() {
   mkdir -p "$VSCODE_USER_DIR"
 
-  cat > "$KEYBINDINGS_FILE" <<'EOF'
+  cat > "$KEYBINDINGS_FILE" <<'EOF_KEYS'
 [
   {
     "key": "ctrl+alt+t",
@@ -565,14 +634,14 @@ function write_keybindings() {
     "command": "editor.action.formatDocument"
   }
 ]
-EOF
+EOF_KEYS
 }
 
 #-------------------------------------------------------------------------------
 # Post-run guidance
 #-------------------------------------------------------------------------------
 function print_post_install_notes() {
-  cat <<'EOF'
+  cat <<'EOF_NOTES'
 
 Post-install notes:
 
@@ -586,29 +655,28 @@ Post-install notes:
        "httpgd"
      ))
 
-   Optional:
+   Optional additions:
 
      install.packages(c("lintr", "styler", "data.table", "renv"))
 
 2. Radian
-   If you want radian explicitly:
+   This script installs radian with pipx when you pass --radian.
 
-     python -m pip install --user --upgrade radian
+   Manual equivalent:
 
-   If radian is not on PATH, either add it to PATH or change `r.rterm.linux`
-   in settings.json back to plain `R`.
+     sudo pacman -S --needed python-pipx
+     pipx ensurepath
+     pipx install radian
 
-3. Java
-   Java support in this setup assumes a JDK is present. Java 21 is a safe and
-   current baseline on Arch.
+   If radian is not installed or not desired, the script falls back to plain R.
 
-4. PowerShell
-   For Linux-side PowerShell authoring/debugging, install PowerShell separately
-   if you actually intend to run pwsh on Arch.
+3. PowerShell
+   If you actually intend to run pwsh on Arch, install PowerShell separately.
+   The VS Code extension alone does not provide the shell.
 
-5. Restart VS Code
+4. Restart VS Code
    Fully quit and reopen VS Code after the script finishes.
-EOF
+EOF_NOTES
 }
 
 #-------------------------------------------------------------------------------
@@ -620,6 +688,11 @@ function main() {
   detect_code_bin
   backup_existing_files
   install_arch_packages
+
+  if [[ "$INSTALL_RADIAN" == true ]]; then
+    install_radian
+  fi
+
   install_extensions
   write_settings
   write_keybindings
